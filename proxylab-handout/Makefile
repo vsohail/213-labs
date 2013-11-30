@@ -11,13 +11,13 @@ LDFLAGS = -lpthread
 
 all: proxy
 
-csapp.o: csapp.c csapp.h open_clientfd_r.c
+csapp.o: csapp.c csapp.h
 	$(CC) $(CFLAGS) -c csapp.c $(LDFLAGS)
 
 proxy.o: proxy.c csapp.h
 	$(CC) $(CFLAGS) -c proxy.c $(LDFLAGS)
 
-proxy: proxy.o csapp.o 
+proxy: proxy.o csapp.o
 	$(CC) $(CFLAGS) proxy.o csapp.o -o proxy $(LDFLAGS)
 
 # Creates a tarball in ../proxylab-handin.tar that you can hand in to
