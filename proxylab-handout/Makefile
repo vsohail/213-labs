@@ -6,23 +6,24 @@
 # Makefile to build your proxy from sources.
 #
 CC = gcc
-CFLAGS = -g -Wall
+CFLAGS = -g -Wall -Werror
 LDFLAGS = -lpthread
 
 all: proxy
 
-csapp.o: csapp.c csapp.h
-	$(CC) $(CFLAGS) -c csapp.c
+csapp.o: csapp.c csapp.h open_clientfd_r.c
+	$(CC) $(CFLAGS) -c csapp.c $(LDFLAGS)
 
 proxy.o: proxy.c csapp.h
-	$(CC) $(CFLAGS) -c proxy.c
+	$(CC) $(CFLAGS) -c proxy.c $(LDFLAGS)
 
-proxy: proxy.o csapp.o
+proxy: proxy.o csapp.o 
+	$(CC) $(CFLAGS) proxy.o csapp.o -o proxy $(LDFLAGS)
 
-# Creates a tarball in ../proxylab-handin.tar that you should then
-# hand in to Autolab. DO NOT MODIFY THIS!
+# Creates a tarball in ../proxylab-handin.tar that you can hand in to
+# Autolab. DO NOT MODIFY THIS!
 handin:
-	(make clean; cd ..; tar cvf proxylab-handin.tar proxylab-handout --exclude tiny --exclude nop-server.py --exclude proxy --exclude .proxy --exclude .noproxy --exclude driver.sh --exclude driver.sh --exclude port-for-user.pl --exclude free-port.sh --exclude .git)
+	(make clean; cd ..; tar cvf proxylab-handin.tar proxylab-handout --exclude tiny --exclude nop-server.py --exclude proxy --exclude .proxy --exclude .noproxy --exclude driver.sh --exclude driver.sh --exclude port-for-user.pl --exclude free-port.sh)
 
 clean:
 	rm -f *~ *.o proxy core *.tar *.zip *.gzip *.bzip *.gz
