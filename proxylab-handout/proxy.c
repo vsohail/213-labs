@@ -41,6 +41,12 @@ void pipe_handler(int sig)
 {
   return;
 }
+void clienterror(int fd,char *cause,char *errnum,char *shortmsg.char *longmsg)
+{
+  char buf[MAXLINE], body[MAXBUF];
+  /* Build the HTTP response body */
+
+}
 void *my_proxy(void *fd)
 {
   return NULL;
