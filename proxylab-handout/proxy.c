@@ -3,7 +3,6 @@
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
-#define HTTP 80
 /* You won't lose style points for including these long lines in your code */
 //static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 //static const char *accept_hdr = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
@@ -11,12 +10,11 @@
 void pipe_handler(int sig);
 void *my_proxy(void *fd);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
-int parse_request(rio_t *rp, char *uri, char *host, int *port, char *req);
+int parse(char *buf, char *uri, char *host, int *port, char *req);
 
 int main(int argc,char **argv)
 {
-  int listenfd,port;
-  int *connfd;
+  int listenfd,port,*connfd;
   socklen_t client_len;
   struct sockaddr_in client_addr;
   pthread_t tid;
@@ -41,17 +39,17 @@ void pipe_handler(int sig)
   return;
 }
 
-int parse_request(rio_t *rp, char *uri, char *host, int *port, char *req)
+int parse(char *buf, char *uri, char *host, int *port, char *req)
 {
-  char buf[MAXLINE], method[MAXLINE];
+  char method[MAXLINE];
   char *p, *path;
   int i=0;
-  Rio_readlineb(rp, buf, MAXLINE);
   sscanf(buf, "%s %s", method, uri);
   p = strstr(uri, "://");
   p += 3;
-  for (; *p != '\0' && *p != '/'; p++, i++) {
+  while(*p != '\0' && *p != '/') {
     host[i] = *p;
+    p++;i++;
   }
   host[i+1]='\0';
 
@@ -61,15 +59,15 @@ int parse_request(rio_t *rp, char *uri, char *host, int *port, char *req)
   path = p;
   p = strstr(host, ":");
   if (!p) {
-    *port = HTTP;
+    *port = 80;
   }
   else {
     *p = '\0';
     p++;
     *port = atoi(p);
   }
-  sprintf(req, "%s %s HTTP/1.0\r\n", method, path);
-  strcat(req, "\r\n");
+  sprintf(req, "%s %s HTTP/1.0\r\n\r\n", method, path);
+  //strcat(req, "\r\n");
   return 0;
 
 }
@@ -95,22 +93,24 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
 }
 void *my_proxy(void *fd_proxy)
 {
-  int clientfd, fd;
+  int clientfd, fd,port;
   char port_str[10];
   size_t n;
-  int port;
-  char response[MAXBUF], req[MAXBUF], host[MAXLINE], url[MAXLINE];
+  char response[MAXBUF], req[MAXBUF];
+  char buf[MAXLINE],host[MAXLINE], url[MAXLINE];
   rio_t rio;
   Pthread_detach(pthread_self()); 
   fd = *((int *)fd_proxy);
+  Free(fd_proxy);
   Rio_readinitb(&rio, fd);
-  if (parse_request(&rio, url, host, &port, req) == 0) {
+  Rio_readlineb(&rio, buf, MAXLINE);
+  if (parse(buf, url, host, &port, req) == 0) {
     sprintf(port_str,"%d",port);
     clientfd = open_clientfd_r(host,port_str);
     Rio_readinitb(&rio, clientfd);
     Rio_writen(clientfd, req, strlen(req));
     while (1) {
-      if ((n = Rio_readnb(&rio, response, MAXBUF)) <= 0) {
+      if ((n = Rio_readnb(&rio, response, MAXBUF)) ==-1) {
         break;
       }
       Rio_writen(fd, response, n);
@@ -118,6 +118,5 @@ void *my_proxy(void *fd_proxy)
     Close(clientfd);
   }
   Close(fd);
-  Free(fd_proxy);
   return NULL;
 }
