@@ -46,7 +46,7 @@ int parse(char *uri, char *host, char *path)
   }
 
   p += 3;
-  q = strpbrk(p, ":/");
+  q = strpbrk(p, " :/");
 
   strncpy(host, p, q-p);
   host[q-p] = '\0';
@@ -128,7 +128,7 @@ void *my_proxy(void *fd_proxy)
     Rio_readinitb(&rio, clientfd);
     Rio_writen(clientfd, req, strlen(req));
     while (1) {
-      if ((n = rio_readnb(&rio, response, MAXBUF)) ==-1) {
+      if ((n = Rio_readnb(&rio, response, MAXBUF)) <= 0) {
         break;
       }
       if(rio_writen(fd, response, n)==-1)
