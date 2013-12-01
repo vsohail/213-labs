@@ -3,13 +3,16 @@
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+#define HTTP 80
 /* You won't lose style points for including these long lines in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 static const char *accept_hdr = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
 static const char *accept_encoding_hdr = "Accept-Encoding: gzip, deflate\r\n";
 void *my_proxy(void *fd);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
-int parse(char *buf, char *uri, char *host, int *port, char *req);
+int parse(char *uri, char *host, char *path);
+int open_clientfd_r(char *hostname, char *port);
+int Open_clientfd_r(char *hostname, char* port);
 
 int main(int argc,char **argv)
 {
@@ -33,38 +36,40 @@ int main(int argc,char **argv)
   }
   return 0;
 }
-int parse(char *buf, char *uri, char *host, int *port, char *req)
+int parse(char *uri, char *host, char *path)
 {
-  char method[MAXLINE];
-  char *p, *path;
-  int i=0;
-  sscanf(buf, "%s %s", method, uri);
+  char *p, *q;
+  int port;
   p = strstr(uri, "://");
-  p += 3;
-  while(*p != '\0' && *p != '/') {
-    host[i] = *p;
-    p++;i++;
-  }
-  host[i+1]='\0';
-
-  if (*p == '\0') {
-    sprintf(uri, "/");
-  }
-  printf("%s\n",uri);
-  path = p;
-  p = strstr(host, ":");
   if (!p) {
-    *port = 80;
+    return -1;
   }
-  else {
-    *p = '\0';
-    p++;
-    *port = atoi(p);
+
+  p += 3;
+  q = strpbrk(p, ":/");
+
+  strncpy(host, p, q-p);
+  host[q-p] = '\0';
+
+  if (*q == ':') {
+    q++;
+    port = atoi(q);
   }
-  sprintf(req, "%s %s HTTP/1.0\r\n", method, path);
-  return 0;
+  else
+  port = HTTP;
+
+  q = strstr(p, "/");
+  if (!q) {
+    path = "/";
+    return port;
+  }
+  strncpy(path, q, strlen(q));
+  path[strlen(q)] = '\0';
+
+  return port;
 
 }
+
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg)
 {
   char buf[MAXLINE], body[MAXBUF];
@@ -91,15 +96,16 @@ void *my_proxy(void *fd_proxy)
   char port_str[10];
   size_t n;
   char response[MAXBUF], req[MAXBUF];
-  char buf[MAXLINE],host[MAXLINE], url[MAXLINE];
+  char buf[MAXLINE],host[MAXLINE],path[MAXLINE],url[MAXLINE], version[MAXLINE], method[MAXLINE];
   rio_t rio;
   Pthread_detach(pthread_self()); 
   fd = *((int *)fd_proxy);
   Free(fd_proxy);
   Rio_readinitb(&rio, fd);
   Rio_readlineb(&rio, buf, MAXLINE);
-  if (parse(buf, url, host, &port, req) == 0) {
-
+  sscanf(buf, "%s %s %s", method, url, version);
+  if ((port=parse(url, host, path)) != 0) {
+    sprintf(req, "%s %s HTTP/1.0\r\n", method,path);
     while(strcmp(buf, "\r\n")) {
       Rio_readlineb(&rio, buf, MAXLINE);
       if (strstr(buf, ":") && !strstr(buf, "User-Agent:") && !strstr(buf, "Accept:")
@@ -122,13 +128,59 @@ void *my_proxy(void *fd_proxy)
     Rio_readinitb(&rio, clientfd);
     Rio_writen(clientfd, req, strlen(req));
     while (1) {
-      if ((n = Rio_readnb(&rio, response, MAXBUF)) ==-1) {
+      if ((n = rio_readnb(&rio, response, MAXBUF)) ==-1) {
         break;
       }
-      Rio_writen(fd, response, n);
+      if(rio_writen(fd, response, n)==-1)
+        return NULL;
     }
     Close(clientfd);
   }
   Close(fd);
   return NULL;
 }
+int Open_clientfd_r(char *hostname, char* port) 
+{
+  int rc;
+
+  if ((rc = open_clientfd_r(hostname, port)) < 0) {
+    if (rc == -1)
+      unix_error("Open_clientfd_r Unix error");
+    else
+      dns_error("Open_clientfd_r DNS error");
+  }
+  return rc;
+}
+int open_clientfd_r(char *hostname, char *port) {
+  int clientfd;
+  struct addrinfo *addlist, *p;
+  int rv;
+  /* Create the socket descriptor */
+  if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    return -1;
+  }
+
+  /* Get a list of addrinfo structs */
+  if ((rv = getaddrinfo(hostname, port, NULL, &addlist)) != 0) {
+    return -1;
+  }
+  /* Walk the list, using each addrinfo to try to connect */
+  for (p = addlist; p; p = p->ai_next) {
+    if ((p->ai_family == AF_INET)) {
+      if (connect(clientfd, p->ai_addr, p->ai_addrlen) == 0) {
+        break; /* success */
+      }
+    }
+  }
+
+  /* Clean up */
+  freeaddrinfo(addlist);
+  if (!p) { /* all connects failed */
+    close(clientfd);
+    return -1;
+  }
+  else { /* one of the connects succeeded */
+    return clientfd;
+  }
+}
+
