@@ -6,7 +6,7 @@
 # Makefile to build your proxy from sources.
 #
 CC = gcc
-CFLAGS = -g -Wall -Werror
+CFLAGS = -g -Wall
 LDFLAGS = -lpthread
 
 all: proxy
