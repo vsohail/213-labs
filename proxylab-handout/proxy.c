@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "cache.h"
 #include "csapp.h"
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
@@ -27,6 +28,7 @@ int main(int argc,char **argv)
   }
   Signal(SIGPIPE,SIG_IGN);
   port = atoi(argv[1]);
+  cache_init(MAX_CACHE_SIZE,MAX_OBJECT_SIZE);
   listenfd = Open_listenfd(port);
   client_len = sizeof(struct sockaddr_in);
   while(1) {
@@ -56,7 +58,7 @@ int parse(char *uri, char *host, char *path)
     port = atoi(q);
   }
   else
-  port = HTTP;
+    port = HTTP;
 
   q = strstr(p, "/");
   if (!q) {
@@ -95,46 +97,69 @@ void *my_proxy(void *fd_proxy)
   int clientfd, fd,port;
   char port_str[10];
   size_t n;
+  int size;
   char response[MAXBUF], req[MAXBUF];
   char buf[MAXLINE],host[MAXLINE],path[MAXLINE],url[MAXLINE], version[MAXLINE], method[MAXLINE];
-  rio_t rio;
+  rio_t rio,rio_c;
+  void *to_cache;
   Pthread_detach(pthread_self()); 
   fd = *((int *)fd_proxy);
   Free(fd_proxy);
   Rio_readinitb(&rio, fd);
   Rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, url, version);
+  printf("Ekdum start!\n");
   if ((port=parse(url, host, path)) != 0) {
-    sprintf(req, "%s %s HTTP/1.0\r\n", method,path);
-    while(strcmp(buf, "\r\n")) {
-      Rio_readlineb(&rio, buf, MAXLINE);
-      if (strstr(buf, ":") && !strstr(buf, "User-Agent:") && !strstr(buf, "Accept:")
-          && !strstr(buf, "Accept-Encoding:") && !strstr(buf, "Connection:") && !strstr(buf, "Proxy-Connection:")) {
-        strcat(req, buf);
+    if((to_cache=retreive(url,&size))!=NULL) {
+      printf("Fucked!!");
+      Rio_writen(fd,to_cache,size);
+    }
+    else {
+      printf("Proxy enter\n");
+      sprintf(req, "%s %s HTTP/1.0\r\n", method,path);
+      while(strcmp(buf, "\r\n")) {
+        Rio_readlineb(&rio, buf, MAXLINE);
+        if (strstr(buf, ":") && !strstr(buf, "User-Agent:") && !strstr(buf, "Accept:")
+            && !strstr(buf, "Accept-Encoding:") && !strstr(buf, "Connection:") && !strstr(buf, "Proxy-Connection:")) {
+          strcat(req, buf);
+        }
       }
-    }
-    if (!strstr(req, "Host:")) {
-      sprintf(req, "%sHost: %s\r\n",req,host);
-    }
-    sprintf(req, "%s%s",req,user_agent_hdr);
-    sprintf(req, "%s%s",req,accept_hdr);
-    sprintf(req, "%s%s",req,accept_encoding_hdr);
-    sprintf(req, "%sConnection: close\r\n",req);
-    sprintf(req, "%sProxy-Connection: close\r\n",req);
-    sprintf(req, "%s\r\n",req);
-    printf("%s\n",req);
-    sprintf(port_str,"%d",port);
-    clientfd = open_clientfd_r(host,port_str);
-    Rio_readinitb(&rio, clientfd);
-    Rio_writen(clientfd, req, strlen(req));
-    while (1) {
-      if ((n = Rio_readnb(&rio, response, MAXBUF)) <= 0) {
-        break;
+      if (!strstr(req, "Host:")) {
+        sprintf(req, "%sHost: %s\r\n",req,host);
       }
-      if(rio_writen(fd, response, n)==-1)
-        return NULL;
+      sprintf(req, "%s%s",req,user_agent_hdr);
+      sprintf(req, "%s%s",req,accept_hdr);
+      sprintf(req, "%s%s",req,accept_encoding_hdr);
+      sprintf(req, "%sConnection: close\r\n",req);
+      sprintf(req, "%sProxy-Connection: close\r\n",req);
+      sprintf(req, "%s\r\n",req);
+      printf("%s\n",req);
+      sprintf(port_str,"%d",port);
+      clientfd = open_clientfd_r(host,port_str);
+      Rio_readinitb(&rio_c, clientfd);
+      Rio_writen(clientfd, req, strlen(req));
+      size=0;
+      printf("Reached here halfway!\n");
+      while (1) {
+        if ((n = Rio_readnb(&rio_c, response, MAXBUF)) <= 0) {
+          break;
+        }
+        size+=n;
+        if(size<=MAX_OBJECT_SIZE) {
+          to_cache = Realloc(to_cache,size);
+          memcpy(to_cache + (size-n),response,n);
+        }
+        else {
+          Free(to_cache);to_cache=NULL;
+        }
+        if(rio_writen(fd, response, n)==-1)
+          return NULL;
+      }
+      if(to_cache) {
+        insert(url,to_cache,size);
+      }
+      Close(clientfd);
     }
-    Close(clientfd);
   }
   Close(fd);
   return NULL;
