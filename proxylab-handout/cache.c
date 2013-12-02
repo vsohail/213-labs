@@ -21,7 +21,6 @@ void cache_init(int max_cache_size,int max_obj_size)
 }
 void insert(char *url,void *data,int size)
 {
-  printf("I reached here\n");
   if(size>max_size)
     return;
   struct cache *new_entry = Malloc(sizeof(struct cache));
@@ -67,11 +66,9 @@ void insert(char *url,void *data,int size)
   if(readcount==0)
     V(&w);
   V(&mutex);
-  printf("I did not reached here\n");
 }
 void *retreive(char *url,int *size)
 {
-  printf("Came here\n");
   struct cache *cur,*prev;
   cur=init_block->next;
   prev=init_block;
@@ -81,9 +78,7 @@ void *retreive(char *url,int *size)
   if(readcount==1)
     P(&w);
   V(&mutex);
-  printf("Here!\n");
   while(cur!=NULL) {
-    printf("NONONO!\n");
     if(!strcmp(cur->url,url)) {
       if(cur!=head) {
         P(&mutex);

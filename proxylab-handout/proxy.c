@@ -108,14 +108,18 @@ void *my_proxy(void *fd_proxy)
   Rio_readinitb(&rio, fd);
   Rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, url, version);
-  printf("Ekdum start!\n");
+  /*if (strcasecmp(method, "GET")) {
+    clienterror(fd, method, "501", "Not Implemented",
+        "This request is not currently supported");
+    Close(fd);
+    return NULL;
+  }*/
   if ((port=parse(url, host, path)) != 0) {
     if((to_cache=retreive(url,&size))!=NULL) {
-      printf("Fucked!!");
+      printf("HITTTTTTTT!!!!!!!!!!!!!!!!!\n");
       Rio_writen(fd,to_cache,size);
     }
     else {
-      printf("Proxy enter\n");
       sprintf(req, "%s %s HTTP/1.0\r\n", method,path);
       while(strcmp(buf, "\r\n")) {
         Rio_readlineb(&rio, buf, MAXLINE);
@@ -139,7 +143,6 @@ void *my_proxy(void *fd_proxy)
       Rio_readinitb(&rio_c, clientfd);
       Rio_writen(clientfd, req, strlen(req));
       size=0;
-      printf("Reached here halfway!\n");
       while (1) {
         if ((n = Rio_readnb(&rio_c, response, MAXBUF)) <= 0) {
           break;
@@ -152,8 +155,11 @@ void *my_proxy(void *fd_proxy)
         else {
           Free(to_cache);to_cache=NULL;
         }
-        if(rio_writen(fd, response, n)==-1)
+        if(rio_writen(fd, response, n)==-1) {
+          Close(clientfd);
+          Close(fd);
           return NULL;
+        }
       }
       if(to_cache) {
         insert(url,to_cache,size);
