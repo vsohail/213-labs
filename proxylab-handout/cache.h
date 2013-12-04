@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include "csapp.h"
-
+#include <time.h>
 struct cache {
   int size;
   char url[MAXLINE];
   void *data;
+  long freshness;
   struct cache *next;
 };
 

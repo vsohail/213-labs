@@ -14,6 +14,7 @@ void cache_init(int max_cache_size,int max_obj_size)
   max_obj=max_obj_size;
   init_block = Malloc(sizeof(struct cache));
   head=init_block;
+  init_block->next=NULL;
   Sem_init(&mutex, 0, 1);
   Sem_init(&w, 0, 1);
   readcount=0;
@@ -23,86 +24,64 @@ void insert(char *url,void *data,int size)
 {
   if(size>max_size)
     return;
-  struct cache *new_entry = Malloc(sizeof(struct cache));
   P(&w);
+  printf("Inserting\n");
+  struct cache *new_entry = Malloc(sizeof(struct cache));
   new_entry->size = size;
   cur_size += size;
   new_entry->data = data;
   strncpy(new_entry->url,url,strlen(url));
   new_entry->next = NULL;
+  new_entry->freshness = (long)time(0);
   head->next = new_entry;
   head = new_entry;
-  V(&w);
   struct cache *move = init_block->next;
-  P(&mutex);
-  readcount++;
-  if(readcount==1)
-    P(&w);
-  V(&mutex);
+  long tmp = move->freshness;
+  struct cache *lru=move,*prev=init_block;
   while(cur_size>max_size) {
-    if(move!=head)
-    {
-      P(&mutex);
-      readcount--;
-      if(readcount==0)
-        V(&w);
-      V(&mutex);
-      P(&w);
-      init_block->next=init_block->next->next;
-      cur_size-=move->size;
-      Free(move->data);
-      Free(move);
-      move=init_block->next;
-      V(&w);
-      P(&mutex);
-      readcount++;
-      if(readcount==1)
-        P(&w);
-      V(&mutex);
+    move=init_block->next;
+    tmp=move->freshness;
+    prev=init_block;
+    lru=move;
+    while(move->next != head) {
+      if(tmp > move->next->freshness)
+      {
+        tmp=move->next->freshness;
+        lru=move->next;
+        prev=move;
+      }
+      move=move->next;
     }
+    printf("Voila!\n");
+    printf("Readying %p\n",lru);
+    prev->next=lru->next;
+    cur_size-=lru->size;
+    printf("Danger\n");
+    Free(lru->data);
+    printf("More Danger\n");
+    Free(lru);
+    lru = NULL;
   }
-  P(&mutex);
-  readcount--;
-  if(readcount==0)
-    V(&w);
-  V(&mutex);
+  printf("Out of here!\n");
+  V(&w);
 }
 void *retreive(char *url,int *size)
 {
-  struct cache *cur,*prev;
-  cur=init_block->next;
-  prev=init_block;
-  void *data = NULL;
   P(&mutex);
   readcount++;
   if(readcount==1)
     P(&w);
   V(&mutex);
+  struct cache *cur;
+  cur=init_block->next;
+  void *data = NULL;
   while(cur!=NULL) {
     if(!strcmp(cur->url,url)) {
-      if(cur!=head) {
-        P(&mutex);
-        readcount--;
-        if(readcount==0)
-          V(&w);
-        V(&mutex);
-        P(&w);
-        prev->next=cur->next;
-        head->next=cur;
-        head=cur;
-        cur->next=NULL;
-      }
+      cur->freshness = (long)time(0);
       *size = cur->size;
       data = cur->data;
-      V(&w);
-      P(&mutex);
-      readcount++;
-      if(readcount==1)
-        P(&w);
-      V(&mutex);
       break;
     }
-    prev=cur;
     cur=cur->next;
   }
   P(&mutex);
@@ -110,5 +89,6 @@ void *retreive(char *url,int *size)
   if(readcount==0)
     V(&w);
   V(&mutex);
+  printf("Found %p\n",data);
   return data;
 }

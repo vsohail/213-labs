@@ -110,13 +110,15 @@ void *my_proxy(void *fd_proxy)
   sscanf(buf, "%s %s %s", method, url, version);
   /*if (strcasecmp(method, "GET")) {
     clienterror(fd, method, "501", "Not Implemented",
-        "This request is not currently supported");
+    "This request is not currently supported");
     Close(fd);
     return NULL;
-  }*/
+    }*/
   if ((port=parse(url, host, path)) != 0) {
     if((to_cache=retreive(url,&size))!=NULL) {
-      printf("HITTTTTTTT!!!!!!!!!!!!!!!!!\n");
+      printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+      printf("!!!!!!!!!!!!!!!!!!!!!!!HIT!!!!!!!!!!!!!!!!!!!!!!!\n");
+      printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
       Rio_writen(fd,to_cache,size);
     }
     else {
