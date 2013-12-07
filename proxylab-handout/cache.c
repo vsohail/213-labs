@@ -18,14 +18,12 @@ void cache_init(int max_cache_size,int max_obj_size)
   Sem_init(&mutex, 0, 1);
   Sem_init(&w, 0, 1);
   readcount=0;
-  printf("Cache INIT\n");
 }
 void insert(char *url,void *data,int size)
 {
   if(size>max_size)
     return;
   P(&w);
-  printf("Inserting\n");
   struct cache *new_entry = Malloc(sizeof(struct cache));
   new_entry->size = size;
   cur_size += size;
@@ -52,17 +50,12 @@ void insert(char *url,void *data,int size)
       }
       move=move->next;
     }
-    printf("Voila!\n");
-    printf("Readying %p\n",lru);
     prev->next=lru->next;
     cur_size-=lru->size;
-    printf("Danger\n");
     Free(lru->data);
-    printf("More Danger\n");
     Free(lru);
     lru = NULL;
   }
-  printf("Out of here!\n");
   V(&w);
 }
 void *retreive(char *url,int *size)
@@ -89,6 +82,5 @@ void *retreive(char *url,int *size)
   if(readcount==0)
     V(&w);
   V(&mutex);
-  printf("Found %p\n",data);
   return data;
 }

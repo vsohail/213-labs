@@ -10,7 +10,8 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64;
 static const char *accept_hdr = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
 static const char *accept_encoding_hdr = "Accept-Encoding: gzip, deflate\r\n";
 void *my_proxy(void *fd);
-void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
+void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
+    char *longmsg);
 int parse(char *uri, char *host, char *path);
 int open_clientfd_r(char *hostname, char *port);
 int Open_clientfd_r(char *hostname, char* port);
@@ -85,12 +86,12 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
 
   /* Print the HTTP response */
   sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
-  Rio_writen(fd, buf, strlen(buf));
+  rio_writen(fd, buf, strlen(buf));
   sprintf(buf, "Content-type: text/html\r\n");
-  Rio_writen(fd, buf, strlen(buf));
+  rio_writen(fd, buf, strlen(buf));
   sprintf(buf, "Content-length: %d\r\n\r\n", (int)strlen(body));
-  Rio_writen(fd, buf, strlen(buf));
-  Rio_writen(fd, body, strlen(body));
+  rio_writen(fd, buf, strlen(buf));
+  rio_writen(fd, body, strlen(body));
 }
 void *my_proxy(void *fd_proxy)
 {
@@ -105,28 +106,29 @@ void *my_proxy(void *fd_proxy)
   Pthread_detach(pthread_self()); 
   fd = *((int *)fd_proxy);
   Free(fd_proxy);
-  Rio_readinitb(&rio, fd);
-  Rio_readlineb(&rio, buf, MAXLINE);
+  rio_readinitb(&rio, fd);
+  rio_readlineb(&rio, buf, MAXLINE);
   sscanf(buf, "%s %s %s", method, url, version);
-  /*if (strcasecmp(method, "GET")) {
-    clienterror(fd, method, "501", "Not Implemented",
-    "This request is not currently supported");
+  if (strcasecmp(method, "GET")) {
+    clienterror(fd, method, "501", "Method Not Implemented",
+        "This request is not currently supported");
     Close(fd);
     return NULL;
-    }*/
-  if ((port=parse(url, host, path)) != 0) {
+  }
+  if ((port=parse(url, host, path)) != -1) {
     if((to_cache=retreive(url,&size))!=NULL) {
-      printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-      printf("!!!!!!!!!!!!!!!!!!!!!!!HIT!!!!!!!!!!!!!!!!!!!!!!!\n");
-      printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
-      Rio_writen(fd,to_cache,size);
+      rio_writen(fd,to_cache,size);
     }
     else {
       sprintf(req, "%s %s HTTP/1.0\r\n", method,path);
       while(strcmp(buf, "\r\n")) {
-        Rio_readlineb(&rio, buf, MAXLINE);
-        if (strstr(buf, ":") && !strstr(buf, "User-Agent:") && !strstr(buf, "Accept:")
-            && !strstr(buf, "Accept-Encoding:") && !strstr(buf, "Connection:") && !strstr(buf, "Proxy-Connection:")) {
+        rio_readlineb(&rio, buf, MAXLINE);
+        if (strstr(buf, ":")
+            && !strstr(buf, "User-Agent:")
+            && !strstr(buf, "Accept:")
+            && !strstr(buf, "Accept-Encoding:")
+            && !strstr(buf, "Connection:") 
+            && !strstr(buf, "Proxy-Connection:")) {
           strcat(req, buf);
         }
       }
@@ -139,14 +141,20 @@ void *my_proxy(void *fd_proxy)
       sprintf(req, "%sConnection: close\r\n",req);
       sprintf(req, "%sProxy-Connection: close\r\n",req);
       sprintf(req, "%s\r\n",req);
-      printf("%s\n",req);
       sprintf(port_str,"%d",port);
       clientfd = open_clientfd_r(host,port_str);
-      Rio_readinitb(&rio_c, clientfd);
-      Rio_writen(clientfd, req, strlen(req));
+
+      if (clientfd < 0) {
+        clienterror(fd, "Clientfd", "502", "Open Client Error",
+            "Error Opening Client FD");
+        Close(fd);
+        return NULL;
+      }
+      rio_readinitb(&rio_c, clientfd);
+      rio_writen(clientfd, req, strlen(req));
       size=0;
       while (1) {
-        if ((n = Rio_readnb(&rio_c, response, MAXBUF)) <= 0) {
+        if ((n = rio_readnb(&rio_c, response, MAXBUF)) <= 0) {
           break;
         }
         size+=n;
@@ -157,11 +165,7 @@ void *my_proxy(void *fd_proxy)
         else {
           Free(to_cache);to_cache=NULL;
         }
-        if(rio_writen(fd, response, n)==-1) {
-          Close(clientfd);
-          Close(fd);
-          return NULL;
-        }
+        rio_writen(fd, response, n);
       }
       if(to_cache) {
         insert(url,to_cache,size);
@@ -169,20 +173,12 @@ void *my_proxy(void *fd_proxy)
       Close(clientfd);
     }
   }
+  else {
+    clienterror(fd, "Parser", "400", "Bad Request",
+        "parse error");
+  }
   Close(fd);
   return NULL;
-}
-int Open_clientfd_r(char *hostname, char* port) 
-{
-  int rc;
-
-  if ((rc = open_clientfd_r(hostname, port)) < 0) {
-    if (rc == -1)
-      unix_error("Open_clientfd_r Unix error");
-    else
-      dns_error("Open_clientfd_r DNS error");
-  }
-  return rc;
 }
 int open_clientfd_r(char *hostname, char *port) {
   int clientfd;
@@ -209,7 +205,7 @@ int open_clientfd_r(char *hostname, char *port) {
   /* Clean up */
   freeaddrinfo(addlist);
   if (!p) { /* all connects failed */
-    close(clientfd);
+    Close(clientfd);
     return -1;
   }
   else { /* one of the connects succeeded */
